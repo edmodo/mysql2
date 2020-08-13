@@ -1,6 +1,6 @@
 require 'spec_helper'
 
-RSpec.describe Mysql2::Client do
+RSpec.describe Mysql2::Client do # rubocop:disable Metrics/BlockLength
   context "using defaults file" do
     let(:cnf_file) { File.expand_path('../../my.cnf', __FILE__) }
 
@@ -607,21 +607,21 @@ RSpec.describe Mysql2::Client do
       # XXX this test is not deterministic (because Unix signal handling is not)
       # and may fail on a loaded system
       it "should run signal handlers while waiting for a response" do
-        kill_time = 0.1
-        query_time = 2 * kill_time
+        kill_time = 0.25
+        query_time = 4 * kill_time
 
         mark = {}
 
         begin
-          trap(:USR1) { mark.store(:USR1, Time.now) }
+          trap(:USR1) { mark.store(:USR1, clock_time) }
           pid = fork do
             sleep kill_time # wait for client query to start
             Process.kill(:USR1, Process.ppid)
             sleep # wait for explicit kill to prevent GC disconnect
           end
-          mark.store(:QUERY_START, Time.now)
+          mark.store(:QUERY_START, clock_time)
           @client.query("SELECT SLEEP(#{query_time})")
-          mark.store(:QUERY_END, Time.now)
+          mark.store(:QUERY_END, clock_time)
         ensure
           Process.kill(:TERM, pid)
           Process.waitpid2(pid)
@@ -629,7 +629,7 @@ RSpec.describe Mysql2::Client do
         end
 
         # the query ran uninterrupted
-        expect(mark.fetch(:QUERY_END) - mark.fetch(:QUERY_START)).to be_within(0.02).of(query_time)
+        expect(mark.fetch(:QUERY_END) - mark.fetch(:QUERY_START)).to be_within(0.1).of(query_time)
         # signals fired while the query was running
         expect(mark.fetch(:USR1)).to be_between(mark.fetch(:QUERY_START), mark.fetch(:QUERY_END))
       end
@@ -694,6 +694,7 @@ RSpec.describe Mysql2::Client do
         sleep_time = 0.5
 
         # Note that each thread opens its own database connection
+        start = clock_time
         threads = Array.new(5) do
           Thread.new do
             new_client do |client|
@@ -702,10 +703,12 @@ RSpec.describe Mysql2::Client do
             Thread.current.object_id
           end
         end
+        values = threads.map(&:value)
+        stop = clock_time
 
-        # This timeout demonstrates that the threads are sleeping concurrently:
-        # In the serial case, the timeout would fire and the test would fail
-        values = Timeout.timeout(sleep_time * 1.1) { threads.map(&:value) }
+        # This check demonstrates that the threads are sleeping concurrently:
+        # In the serial case, the difference would be a multiple of sleep time
+        expect(stop - start).to be_within(0.1).of(sleep_time)
 
         expect(values).to match_array(threads.map(&:object_id))
       end
@@ -1021,6 +1024,49 @@ RSpec.describe Mysql2::Client do
 
   it "should respond to #ping" do
     expect(@client).to respond_to(:ping)
+  end
+
+  context "session_track" do
+    before(:each) do
+      unless Mysql2::Client.const_defined?(:SESSION_TRACK)
+        skip('Server versions must be MySQL 5.7 later.')
+      end
+      @client.query("SET @@SESSION.session_track_system_variables='*';")
+    end
+
+    it "returns changes system variables for SESSION_TRACK_SYSTEM_VARIABLES" do
+      @client.query("SET @@SESSION.session_track_state_change=ON;")
+      res = @client.session_track(Mysql2::Client::SESSION_TRACK_SYSTEM_VARIABLES)
+      expect(res).to eq(%w[session_track_state_change ON])
+    end
+
+    it "returns database name for SESSION_TRACK_SCHEMA" do
+      @client.query("USE information_schema")
+      res = @client.session_track(Mysql2::Client::SESSION_TRACK_SCHEMA)
+      expect(res).to eq(["information_schema"])
+    end
+
+    it "returns multiple session track type values when available" do
+      @client.query("SET @@SESSION.session_track_transaction_info='CHARACTERISTICS'")
+
+      res = @client.session_track(Mysql2::Client::SESSION_TRACK_TRANSACTION_STATE)
+      expect(res).to eq(["________"])
+
+      res = @client.session_track(Mysql2::Client::SESSION_TRACK_TRANSACTION_CHARACTERISTICS)
+      expect(res).to eq([""])
+
+      res = @client.session_track(Mysql2::Client::SESSION_TRACK_STATE_CHANGE)
+      expect(res).to be_nil
+
+      res = @client.session_track(Mysql2::Client::SESSION_TRACK_SYSTEM_VARIABLES)
+      expect(res).to eq(%w[session_track_transaction_info CHARACTERISTICS])
+    end
+
+    it "returns empty array if session track type not found" do
+      @client.query("SET @@SESSION.session_track_state_change=ON;")
+      res = @client.session_track(Mysql2::Client::SESSION_TRACK_TRANSACTION_CHARACTERISTICS)
+      expect(res).to be_nil
+    end
   end
 
   context "select_db" do

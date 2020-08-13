@@ -2,8 +2,15 @@ source 'https://rubygems.org'
 
 gemspec
 
-gem 'rake', '~> 10.4.2'
-gem 'rake-compiler', '~> 1.0'
+gem 'rake', if Gem::Version.new(RUBY_VERSION) >= Gem::Version.new("2.2")
+              '~> 13.0.1'
+            else
+              '< 13'
+            end
+gem 'rake-compiler', '~> 1.1.0'
+
+# For local debugging, irb is Gemified since Ruby 2.6
+gem 'irb', require: false
 
 group :test do
   gem 'eventmachine' unless RUBY_PLATFORM =~ /mswin|mingw/
@@ -23,7 +30,7 @@ end
 
 group :development do
   gem 'pry'
-  gem 'rake-compiler-dock', '~> 0.6.0'
+  gem 'rake-compiler-dock', '~> 0.7.0'
 end
 
 platforms :rbx do

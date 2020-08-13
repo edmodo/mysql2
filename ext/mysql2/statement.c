@@ -3,7 +3,8 @@
 extern VALUE mMysql2, cMysql2Error;
 static VALUE cMysql2Statement, cBigDecimal, cDateTime, cDate;
 static VALUE sym_stream, intern_new_with_args, intern_each, intern_to_s, intern_merge_bang;
-static VALUE intern_sec_fraction, intern_usec, intern_sec, intern_min, intern_hour, intern_day, intern_month, intern_year;
+static VALUE intern_sec_fraction, intern_usec, intern_sec, intern_min, intern_hour, intern_day, intern_month, intern_year,
+  intern_query_options;
 
 #define GET_STATEMENT(self) \
   mysql_stmt_wrapper *stmt_wrapper; \
@@ -45,7 +46,7 @@ void rb_raise_mysql2_stmt_error(mysql_stmt_wrapper *stmt_wrapper) {
   VALUE e;
   GET_CLIENT(stmt_wrapper->client);
   VALUE rb_error_msg = rb_str_new2(mysql_stmt_error(stmt_wrapper->stmt));
-  VALUE rb_sql_state = rb_tainted_str_new2(mysql_stmt_sqlstate(stmt_wrapper->stmt));
+  VALUE rb_sql_state = rb_str_new2(mysql_stmt_sqlstate(stmt_wrapper->stmt));
 
   rb_encoding *conn_enc;
   conn_enc = rb_to_encoding(wrapper->encoding);
@@ -404,7 +405,7 @@ static VALUE rb_mysql_stmt_execute(int argc, VALUE *argv, VALUE self) {
   }
 
   // Duplicate the options hash, merge! extra opts, put the copy into the Result object
-  current = rb_hash_dup(rb_iv_get(stmt_wrapper->client, "@query_options"));
+  current = rb_hash_dup(rb_ivar_get(stmt_wrapper->client, intern_query_options));
   (void)RB_GC_GUARD(current);
   Check_Type(current, T_HASH);
 
@@ -571,10 +572,17 @@ static VALUE rb_mysql_stmt_close(VALUE self) {
 
 void init_mysql2_statement() {
   cDate = rb_const_get(rb_cObject, rb_intern("Date"));
+  rb_global_variable(&cDate);
+
   cDateTime = rb_const_get(rb_cObject, rb_intern("DateTime"));
+  rb_global_variable(&cDateTime);
+
   cBigDecimal = rb_const_get(rb_cObject, rb_intern("BigDecimal"));
+  rb_global_variable(&cBigDecimal);
 
   cMysql2Statement = rb_define_class_under(mMysql2, "Statement", rb_cObject);
+  rb_global_variable(&cMysql2Statement);
+
   rb_define_method(cMysql2Statement, "param_count", rb_mysql_stmt_param_count, 0);
   rb_define_method(cMysql2Statement, "field_count", rb_mysql_stmt_field_count, 0);
   rb_define_method(cMysql2Statement, "_execute", rb_mysql_stmt_execute, -1);
@@ -599,4 +607,5 @@ void init_mysql2_statement() {
 
   intern_to_s = rb_intern("to_s");
   intern_merge_bang = rb_intern("merge!");
+  intern_query_options = rb_intern("@query_options");
 }

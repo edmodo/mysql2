@@ -6,7 +6,7 @@ bundler_args: --without benchmarks development
 # Pin Rubygems to a working version. Sometimes it breaks upstream. Update now and then.
 before_install:
   - gem --version
-  - gem update --system 2.7.6 --quiet
+  - gem update --system --quiet || gem update --system 2.7.10 --quiet
   - gem update bundler
   - gem --version
   - bash .travis_setup.sh
@@ -19,6 +19,7 @@ addons:
     - mysql-client-core-5.6
     - mysql-client-5.6
 rvm:
+  - 2.7
   - 2.6
   - 2.5
   - 2.4
@@ -60,11 +61,13 @@ matrix:
           - mysql2gem.example.com
     - rvm: 2.4
       env: DB=mysql57
+      dist: xenial
       addons:
         hosts:
           - mysql2gem.example.com
     - rvm: 2.4
       env: DB=mysql80
+      dist: xenial
       addons:
         hosts:
           - mysql2gem.example.com
